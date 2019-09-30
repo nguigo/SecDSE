@@ -163,3 +163,50 @@ def xxx_memcpy_symb(dse):
   # Clear ret addr in DSE
   dse.callsite = None
   return True
+
+def xxx___ctype_b_loc(jitter):
+  ret_ad, _ = jitter.func_args_systemv([])
+  return jitter.func_ret_systemv(ret_ad, 0x40000)
+
+def xxx___ctype_b_loc_symb(dse):
+  # Just use the concrete return address
+  ret = dse.eval_expr(ExprMem(ExprInt(dse.jitter.cpu.RSP, 64), 64))
+  dse.update_state({ExprId('RAX', 64): ExprInt(0x40000, 64),
+                    dse.ir_arch.IRDst: ret,
+                    ExprId('RSP', 64): ExprInt(dse.jitter.cpu.RSP+0x8, 64)})
+  return True
+
+# Pow(double, double) XMM implementation
+def xxx_pow(jitter):
+  ret_ad, _ = jitter.func_args_systemv([])
+  x = struct.unpack('d', struct.pack('L', jitter.cpu.XMM0))[0]
+  y = struct.unpack('d', struct.pack('L', jitter.cpu.XMM1))[0]
+  jitter.cpu.XMM0 = struct.unpack('L', struct.pack('d', x*y))[0]
+  jitter.func_ret_systemv(ret_ad)
+
+# Pow(double, double) XMM implementation
+def xxx_pow_symb(dse):
+  # Just use the concrete return address
+  ret = dse.eval_expr(ExprMem(ExprInt(dse.jitter.cpu.RSP, 64), 64))
+  # Get the args from XMM regs
+  x = dse.eval_expr(ExprId('XMM0', 64))
+  y = dse.eval_expr(ExprId('XMM1', 64))
+  # This is wrong but that'll do
+  dse.update_state({ExprId('RAX', 64): ExprOp('**', x, y),
+                    dse.ir_arch.IRDst: ret,
+                    ExprId('RSP', 64): ExprInt(dse.jitter.cpu.RSP+0x8, 64)})
+  return True
+
+def xxx_printf_symb(dse):
+  return skip_symb(dse)
+
+# Skip the logging
+def xxx_sprintf(jitter):
+  return skip(jitter)
+
+def xxx_sprintf_symb(dse):
+  return skip_symb(dse)
+
+ # Ignore for now
+def xxx_puts_symb(dse):
+  return skip_symb(dse)
