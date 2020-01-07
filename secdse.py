@@ -25,7 +25,6 @@ RET_ADDR = 0xCAFED00D8BADF00D
 
 # Simple structs
 todo = namedtuple('todo', ['buf', 'to_symbolize'])
-bytecast = lambda x: x.to_bytes(1, 'little')
 
 class crash(object):
 
@@ -95,13 +94,11 @@ class ESETrackMemory(ESETrackModif):
     return set(smi)
 
   def derive_crashbuf(self, model):
-    crashbuf= b''
+    crashbuf= bytearray(self.dse.current.buf)
     for i, expr in enumerate([self.dse_memory_to_expr(b) for r in self.dse_memory_range for b in range(r[0], r[1]+1)]):
       symbval = model[self.dse.z3_trans.from_expr(expr)]
-      if symbval is None:
-         crashbuf += bytecast(self.dse.current.buf[i])
-      else:
-       crashbuf += bytecast(symbval.as_long())
+      if symbval is not None:
+       crashbuf[i] = symbval.as_long()
     return crashbuf
 
   def get_values_from_model(self, model):
@@ -429,7 +426,8 @@ def run(jitter_setup, dse_setup):
            )
   for i, record in enumerate(set(dse.crashes)):
     if options.dump:
-      with open('crash_{:X}'.format(record.__hash__()), 'wb') as f:
+      hashval = record.__hash__()
+      with open(f'crash_{hashval:X}', 'wb') as f:
         f.write(record.buf)
     log.error(str(record))
   log.error('-'*80)

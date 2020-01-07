@@ -1,6 +1,6 @@
 import logging
 import struct
-from miasm.os_dep.linux_stdlib              import linobjs
+from miasm.os_dep.linux_stdlib              import linobjs, xxx_memcpy as xxx_memcpy_miasm
 from miasm.expression.expression            import ExprId, ExprInt, ExprMem, ExprOp, ExprCond, ExprAssign, get_expr_ids
 from miasm.expression.expression_helper     import CondConstraintNotZero
 from miasm.expression.simplifications       import expr_simp_explicit
@@ -40,14 +40,24 @@ def xxx_malloc(jitter):
     log.warning('UNSAFELY LARGE ALLOCATION REQUEST: ' + str(args.msize))
   return jitter.func_ret_systemv(ret_ad, addr)
 
+# Hooking memcpy to prevent process termination due to oversized allocation failures
+def xxx_memcpy(jitter):
+  n = jitter.cpu.RDX
+  if n > MAX_ALLOC_SIZE:
+    # Let symbolic engine pick up this crash
+    import pdb; pdb.set_trace()
+    raise RuntimeError('Copy too large, terminating run early (symbexec should have picked this up)')
+  return xxx_memcpy_miasm(jitter)
+
 # TODO: Check for z3 solutions for size request of 0
 def xxx_malloc_symb(dse):
   # Get the return address from stack
   ret = dse.eval_expr(ExprMem(ExprInt(dse.jitter.cpu.RSP, 64), 64))
   # Use the concrete address for the symbolic range
   buf = linobjs.heap.addr
+  # TODO: replace with generic expression representing calling convention's first arg
   size = dse.eval_expr(ExprId('RDI', 64))
-  log.debug('xxx_malloc_symb({})'.format(size))
+  log.debug(f'xxx_malloc_symb({size})')
   concrete_size = int(size) if size.is_int() else dse.jitter.cpu.RDI
   writes = {}
   if concrete_size < MAX_ALLOC_SIZE:
@@ -84,8 +94,10 @@ def xxx_calloc_symb(dse):
   ret = dse.eval_expr(ExprMem(ExprInt(dse.jitter.cpu.RSP, 64), 64))
   # Use the concrete address for the symbolic range
   buf = linobjs.heap.addr
+  # TODO: replace with generic expression representing calling convention's first arg
   nmemb = dse.eval_expr(ExprId('RDI', 64))
   conc_nmemb = int(nmemb) if nmemb.is_int() else dse.jitter.cpu.RDI
+  # TODO: replace with generic expression representing calling convention's second arg
   size = dse.eval_expr(ExprId('RSI', 64))
   conc_size = int(size) if size.is_int() else dse.jitter.cpu.RSI
   total = (conc_nmemb*conc_size) & 0xFFFFFFFFFFFFFFFF
