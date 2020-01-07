@@ -25,6 +25,7 @@ RET_ADDR = 0xCAFED00D8BADF00D
 
 # Simple structs
 todo = namedtuple('todo', ['buf', 'to_symbolize'])
+bytecast = lambda x: x.to_bytes(1, 'little')
 
 class crash(object):
 
@@ -49,7 +50,7 @@ class crash(object):
     return 'ID={:X} | RIP= {:08X} {} |  buf= {} | {}'.format( self.__hash__(), \
                                                     self.pc, \
                                                     '(ret= '+hex(self.callsite)[2:]+')' if self.callsite else '', \
-                                                     ':'.join('{:02X}'.format(ord(x)) for x in self.buf), \
+                                                     ':'.join(f'{b:02X}' for b in self.buf), \
                                                      self.type + '['+str(self.address)+']' if self.address else 'UNDEFINED'\
                                                    )
 
@@ -94,10 +95,13 @@ class ESETrackMemory(ESETrackModif):
     return set(smi)
 
   def derive_crashbuf(self, model):
-    crashbuf= ''
+    crashbuf= b''
     for i, expr in enumerate([self.dse_memory_to_expr(b) for r in self.dse_memory_range for b in range(r[0], r[1]+1)]):
       symbval = model[self.dse.z3_trans.from_expr(expr)]
-      crashbuf += self.dse.current.buf[i] if symbval is None else chr(symbval.as_long())
+      if symbval is None:
+         crashbuf += bytecast(self.dse.current.buf[i])
+      else:
+       crashbuf += bytecast(symbval.as_long())
     return crashbuf
 
   def get_values_from_model(self, model):
@@ -164,7 +168,7 @@ class ESETrackMemory(ESETrackModif):
     if not self.dse._state_check_in_progress:
       # TODO: Something with better perf
       for uninit in  [i for i in get_expr_ids(val) if i.name.startswith('UNINIT')]:
-        log.debug('LIVE 0x{:08X}: UNINIT on "{:s}"  '.format(self.dse.jitter.pc, uninit))
+        log.debug(f'LIVE 0x{self.dse.jitter.pc:08X}: UNINIT on "{str(uninit):s}"')
         self.dse.crashes.append(crash( self.dse.jitter.pc, \
                                     uninit, \
                                     'UNINIT', \
@@ -195,7 +199,7 @@ class SecDSE(DSEPC):
                                  **kwargs)
 
   def refresh_valid_jitter_ranges(self):
-    self.valid_ranges = [(ExprInt(m, 64), ExprInt(m+i['size']-1, 64)) for m, i in self.jitter.vm.get_all_memory().iteritems()]
+    self.valid_ranges = [(ExprInt(m, 64), ExprInt(m+i['size']-1, 64)) for m, i in self.jitter.vm.get_all_memory().items()]
 
   def get_todo(self):
     self.current = self.todos.pop(0) # FIFO for output clarity
@@ -381,12 +385,12 @@ def run(jitter_setup, dse_setup):
     try:
       sb.jitter.continue_run()
     except DriftException as e:
-      print hex(dse.jitter.pc) + ' ' + str(e)
+      print(hex(dse.jitter.pc) + ' ' + str(e))
       break
     # TODO: Rename to SymbToConcException
     except MemSquareException as e:
       # TODO: We can just concretize the byte and continue from here
-      print hex(dse.jitter.pc) + ' ' + str(e.info)
+      print(hex(dse.jitter.pc) + ' ' + str(e.info))
       dse.done()
       new_to_symbolize = current.to_symbolize
       for mem in e.ptr:
@@ -397,13 +401,14 @@ def run(jitter_setup, dse_setup):
         for buf in dse.gen_new_bufs(e.ptr):
           dse.todos.append(todo(buf, current.to_symbolize)) # Put it in the todo list
       else:
-        print 'CONCRETIZING: ' + hex(mem)
+        print('CONCRETIZING: ' + hex(mem))
         dse.todos.insert(0, todo(current.buf, new_to_symbolize))
       # Continue the current run?
       #import pdb; pdb.set_trace()
       continue
     except RuntimeError as e:
-      log.warning('LIVE 0x{:08X}: AV with "{:s}"  '.format(dse.jitter.pc, e.message))
+      message = str(e)
+      log.warning(f'LIVE 0x{dse.jitter.pc:08X}: AV with "{message:s}"')
       dse.crashes.append(crash(dse.jitter.pc, None, 'UNDEFINED', current.buf))
       dse.done()
       continue
@@ -415,7 +420,7 @@ def run(jitter_setup, dse_setup):
       break
     except Exception as e:
       dse.done()
-      print hex(dse.jitter.pc) + ' ' + str(type(e)) + ': ' + str(e)
+      print(hex(dse.jitter.pc) + ' ' + str(type(e)) + ': ' + str(e))
       import pdb; pdb.set_trace()
       continue
   log.error('-'*80 + ' RESULTS | %i BBL visited | %i todos | %i unique crashes' % (len(dse.visited_bbls), \

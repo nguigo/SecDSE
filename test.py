@@ -16,7 +16,7 @@ def jitter_setup(jitter, start_address, input_buf, buffer_size):
   jitter.push_uint64_t(RET_ADDR)
   # Get run ready
   jitter.init_run(start_address)
-  print jitter.vm
+  print(jitter.vm)
 
 def dse_setup(dse, input_buf):
   # TODO: CUSTOMIZE HERE

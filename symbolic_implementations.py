@@ -130,7 +130,7 @@ def xxx_memcpy_symb(dse):
   dst = dse.eval_expr(ExprId('RDI', 64))
   src = dse.eval_expr(ExprId('RSI', 64))
   n = dse.eval_expr(ExprId('RDX', 64))
-  log.debug('xxx_memcpy_symb(dst={:s}, src={:s}, n={:s})'.format(dst, src, n))
+  log.debug(f'xxx_memcpy_symb(dst={dst}, src={src}, n={n})')
   writes = {}
   size = n if n.is_int() else dse.jitter.cpu.RDX
   # Sanity check: with such a large size, this is likely uninteded program behavior
