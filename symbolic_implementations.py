@@ -45,7 +45,6 @@ def xxx_memcpy(jitter):
   n = jitter.cpu.RDX
   if n > MAX_ALLOC_SIZE:
     # Let symbolic engine pick up this crash
-    import pdb; pdb.set_trace()
     raise RuntimeError('Copy too large, terminating run early (symbexec should have picked this up)')
   return xxx_memcpy_miasm(jitter)
 
