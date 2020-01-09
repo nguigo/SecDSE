@@ -374,7 +374,7 @@ def run(jitter_setup, dse_setup):
     dse.symbolize_memory(current.to_symbolize)
     # Update the buffer in concrete engine
     sb.jitter.vm.set_mem(dse.input_buffer_ptr, current.buf)
-    log.error('-'*80 + ' RUN #%i | %i BBL visited | %i todos | %i crashes' % (nb_run, len(dse.visited_bbls), \
+    log.error('-'*80 + ' RUN #%i | %i INSTR visited | %i todos | %i crashes' % (nb_run, len(dse.visited_bbls), \
                                                                           len(dse.todos), len(dse.crashes) \
                                                                          )
              )
@@ -420,7 +420,7 @@ def run(jitter_setup, dse_setup):
       print(hex(dse.jitter.pc) + ' ' + str(type(e)) + ': ' + str(e))
       import pdb; pdb.set_trace()
       continue
-  log.error('-'*80 + ' RESULTS | %i BBL visited | %i todos | %i unique crashes' % (len(dse.visited_bbls), \
+  log.error('-'*80 + ' RESULTS | %i INSTR visited | %i todos | %i unique crashes' % (len(dse.visited_bbls), \
                                                                                    len(dse.todos), len(set(dse.crashes)) \
                                                                            )
            )
@@ -431,4 +431,3 @@ def run(jitter_setup, dse_setup):
         f.write(record.buf)
     log.error(str(record))
   log.error('-'*80)
-  import pdb; pdb.set_trace()
