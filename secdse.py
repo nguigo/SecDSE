@@ -4,9 +4,10 @@ import logging
 from collections                        import namedtuple
 from itertools                          import combinations
 from miasm.jitter.jitcore_python        import JitCore_Python
+from miasm.core.locationdb              import LocationDB
 from miasm.core.interval                import interval
 from miasm.analysis.dse                 import ESETrackModif, DSEPathConstraint as DSEPC, DriftException
-from miasm.expression.expression        import ExprId, ExprInt, ExprMem, ExprLoc, ExprOp, ExprCond, get_expr_ids, get_expr_mem
+from miasm.expression.expression        import ExprId, ExprInt, ExprMem, ExprLoc, ExprOp, ExprCond, get_expr_ids, get_expr_mem, canonize_to_exprloc
 from miasm.expression.expression_helper import possible_values
 from miasm.analysis.expression_range    import expr_range
 from miasm.analysis.modularintervals    import ModularIntervals
@@ -112,7 +113,7 @@ class ESETrackMemory(ESETrackModif):
     if get_expr_ids(expr_mem.ptr) & self.symbolized_mem_ids:
       for possibility in possible_values(expr_mem.ptr):
         address_expr = possibility.value
-        access_len = expr_mem.size/8
+        access_len = int(expr_mem.size/8)
         # 5 sec timeout
         #self.dse.cur_solver.set('timeout', 5000)
         # Save solver state
@@ -184,16 +185,17 @@ class SecDSE(DSEPC):
 
   SYMB_ENGINE= ESETrackMemory
 
-  def __init__(self, machine, produce_solution=DSEPC.PRODUCE_SOLUTION_CODE_COV,
+  def __init__(self, machine, loc_db, produce_solution=DSEPC.PRODUCE_SOLUTION_CODE_COV,
                known_solutions=None, **kwargs):
     ESETrackMemory.dse = self
     self.crashes = list()
     self.visited_bbls = set()
     self._state_check_in_progress = False
     super(SecDSE, self).__init__(machine,
-                                 produce_solution,
-                                 known_solutions,
-                                 **kwargs)
+                                loc_db,
+                                produce_solution,
+                                known_solutions,
+                                **kwargs)
 
   def refresh_valid_jitter_ranges(self):
     self.valid_ranges = [(ExprInt(m, 64), ExprInt(m+i['size']-1, 64)) for m, i in self.jitter.vm.get_all_memory().items()]
@@ -215,18 +217,18 @@ class SecDSE(DSEPC):
     self._state_check_in_progress = False
 
   def handle(self, cur_addr):
-    cur_addr = self.ir_arch.loc_db.canonize_to_exprloc(cur_addr)
+    cur_addr = canonize_to_exprloc(self.ir_arch.loc_db, cur_addr)
     self.visited_bbls.add(cur_addr)
     symb_pc = self.eval_expr(self.ir_arch.IRDst)
     possibilities = possible_values(symb_pc)
     cur_path_constraint = set() # path_constraint for the concrete path
     if len(possibilities) == 1:
       dst = next(iter(possibilities)).value
-      dst = self.ir_arch.loc_db.canonize_to_exprloc(dst)
+      dst = canonize_to_exprloc(self.ir_arch.loc_db, dst)
       assert dst == cur_addr
     else:
       for possibility in possibilities:
-        target_addr = self.ir_arch.loc_db.canonize_to_exprloc(possibility.value)
+        target_addr = canonize_to_exprloc(self.ir_arch.loc_db, possibility.value)
         path_constraint = set() # Set of ExprAssign for the possible path
 
         # Get constraint associated to the possible path
@@ -352,10 +354,11 @@ def run(jitter_setup, dse_setup):
   else:
     input_buf = os.urandom(int(options.insize, 0))
   # Instantiate
-  sb = Sandbox_Linux_x86_64(options.filename, options, globals())
+  loc_db = LocationDB()
+  sb = Sandbox_Linux_x86_64(loc_db, options.filename, options, globals())
   jitter_setup(sb.jitter, int(options.address, 16), input_buf, len(input_buf))
   # Create and attach DSE
-  dse = SecDSE(sb.machine)
+  dse = SecDSE(sb.machine, loc_db)
   dse.add_lib_handler(sb.libs, globals())
   dse.attach(sb.jitter)
   # Record valid memory ranges
